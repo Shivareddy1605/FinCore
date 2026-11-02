@@ -27,7 +27,7 @@ public class CustomerService {
         customer.setEmail(email);
         customer.setPhoneNumber(phoneNumber);
 
-        return customerRepository.save(customer);
+        return customerRepository.saveAndFlush(customer);
     }
 
     public Customer getCustomerById(UUID id) {
