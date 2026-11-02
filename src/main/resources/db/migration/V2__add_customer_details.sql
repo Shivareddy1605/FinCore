@@ -1,0 +1,4 @@
+ALTER TABLE customers
+ADD COLUMN full_name VARCHAR(100),
+ADD COLUMN email VARCHAR(255),
+ADD COLUMN phone_number VARCHAR(15);

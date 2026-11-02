@@ -19,8 +19,17 @@ public class Customer {
     private UUID id;
 
     @Generated(event = EventType.INSERT)
-@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
-private OffsetDateTime createdAt;
+    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @Column(name = "full_name", length = 100)
+    private String fullName;
+
+    @Column(name = "email", length = 255)
+    private String email;
+
+    @Column(name = "phone_number", length = 15)
+    private String phoneNumber;
 
     public Customer() {
     }
@@ -38,7 +47,30 @@ private OffsetDateTime createdAt;
     }
 
     public OffsetDateTime getCreatedAt() {
-    return createdAt;
-}
+        return createdAt;
+    }
+
+    public String getFullName() {
+    return fullName;
 }
 
+public void setFullName(String fullName) {
+    this.fullName = fullName;
+}
+
+public String getEmail() {
+    return email;
+}
+
+public void setEmail(String email) {
+    this.email = email;
+}
+
+public String getPhoneNumber() {
+    return phoneNumber;
+}
+
+public void setPhoneNumber(String phoneNumber) {
+    this.phoneNumber = phoneNumber;
+}
+}
