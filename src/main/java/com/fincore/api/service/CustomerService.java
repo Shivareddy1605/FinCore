@@ -1,3 +1,4 @@
+
 package com.fincore.api.service;
 
 import com.fincore.api.repository.CustomerRepository;
@@ -21,6 +22,12 @@ public class CustomerService {
             String email,
             String phoneNumber) {
 
+        if (customerRepository.existsByEmail(email)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Email already registered");
+        }
+
         Customer customer = new Customer(UUID.randomUUID());
 
         customer.setFullName(fullName);
@@ -35,5 +42,27 @@ public class CustomerService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Customer not found"));
+    }
+
+    public Customer updateCustomer(
+            UUID id,
+            String fullName,
+            String email,
+            String phoneNumber) {
+
+        Customer customer = getCustomerById(id);
+
+        if (!customer.getEmail().equals(email)
+                && customerRepository.existsByEmail(email)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Email already registered");
+        }
+
+        customer.setFullName(fullName);
+        customer.setEmail(email);
+        customer.setPhoneNumber(phoneNumber);
+
+        return customerRepository.saveAndFlush(customer);
     }
 }

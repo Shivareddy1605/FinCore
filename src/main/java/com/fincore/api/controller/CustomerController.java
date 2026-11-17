@@ -1,10 +1,12 @@
+
 package com.fincore.api.controller;
 
 import com.fincore.api.entity.Customer;
 import com.fincore.api.service.CustomerService;
+import com.fincore.api.dto.CustomerRegistrationRequest;
+import com.fincore.api.dto.CustomerUpdateRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import com.fincore.api.dto.CustomerRegistrationRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
 
@@ -32,5 +34,17 @@ public class CustomerController {
     @GetMapping("/{id}")
     public Customer getCustomerById(@PathVariable UUID id) {
         return customerService.getCustomerById(id);
+    }
+
+    @PutMapping("/{id}")
+    public Customer updateCustomer(
+            @PathVariable UUID id,
+            @Valid @RequestBody CustomerUpdateRequest request) {
+
+        return customerService.updateCustomer(
+                id,
+                request.getFullName(),
+                request.getEmail(),
+                request.getPhoneNumber());
     }
 }
