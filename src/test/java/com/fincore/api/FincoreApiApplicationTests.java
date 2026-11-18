@@ -8,9 +8,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.UUID;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -20,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+@WithMockUser
 class FincoreApiApplicationTests {
 
     @Autowired
@@ -51,6 +54,7 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isCreated())
@@ -73,6 +77,7 @@ class FincoreApiApplicationTests {
                 """;
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isBadRequest());
@@ -90,6 +95,7 @@ class FincoreApiApplicationTests {
                 """;
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isBadRequest());
@@ -107,6 +113,7 @@ class FincoreApiApplicationTests {
                 """;
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isBadRequest());
@@ -126,6 +133,7 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         String response = mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isCreated())
@@ -170,6 +178,7 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         String response = mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createBody))
                 .andExpect(status().isCreated())
@@ -191,6 +200,7 @@ class FincoreApiApplicationTests {
                 """.formatted(updatedEmail);
 
         mockMvc.perform(put("/api/customers/" + customerId)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isOk())
@@ -221,6 +231,7 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         String response = mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createBody))
                 .andExpect(status().isCreated())
@@ -243,6 +254,7 @@ class FincoreApiApplicationTests {
                 """.formatted(updatedEmail);
 
         mockMvc.perform(put("/api/customers/" + customerId)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isOk())
@@ -269,6 +281,7 @@ class FincoreApiApplicationTests {
         String customerId = "550e8400-e29b-41d4-a716-446655440000";
 
         mockMvc.perform(put("/api/customers/" + customerId)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(invalidBody))
                 .andExpect(status().isBadRequest());
@@ -288,6 +301,7 @@ class FincoreApiApplicationTests {
                 """;
 
         mockMvc.perform(put("/api/customers/" + unknownId)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isNotFound());
@@ -315,11 +329,13 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(firstCustomer))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(secondCustomer))
                 .andExpect(status().isConflict());
@@ -348,11 +364,13 @@ class FincoreApiApplicationTests {
                 """.formatted(secondEmail);
 
         mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(firstCustomer))
                 .andExpect(status().isCreated());
 
         String response = mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(secondCustomer))
                 .andExpect(status().isCreated())
@@ -374,6 +392,7 @@ class FincoreApiApplicationTests {
                 """.formatted(firstEmail);
 
         mockMvc.perform(put("/api/customers/" + secondCustomerId)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isConflict());
@@ -397,6 +416,7 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         String response = mockMvc.perform(post("/api/customers")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createBody))
                 .andExpect(status().isCreated())
@@ -418,6 +438,7 @@ class FincoreApiApplicationTests {
                 """.formatted(email);
 
         mockMvc.perform(put("/api/customers/" + customerId)
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isOk())
