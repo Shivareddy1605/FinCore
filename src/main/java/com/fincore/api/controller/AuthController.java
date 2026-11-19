@@ -1,6 +1,8 @@
 
 package com.fincore.api.controller;
 
+import com.fincore.api.dto.LoginRequest;
+import com.fincore.api.dto.LoginResponse;
 import com.fincore.api.dto.RegisterRequest;
 import com.fincore.api.dto.RegisterResponse;
 import com.fincore.api.service.AuthService;
@@ -40,5 +42,14 @@ public class AuthController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request) {
+
+        LoginResponse response = authService.login(request);
+
+        return ResponseEntity.ok(response);
     }
 }

@@ -1,3 +1,4 @@
+
 package com.fincore.api.config;
 
 import jakarta.servlet.DispatcherType;
@@ -23,14 +24,18 @@ public class SecurityConfig {
 
         http
             .csrf(csrf -> csrf
-                .ignoringRequestMatchers("/api/auth/register")
+                .ignoringRequestMatchers(
+                    "/api/auth/register",
+                    "/api/auth/login"
+                )
             )
             .authorizeHttpRequests(auth -> auth
                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers(
                     HttpMethod.POST,
-                    "/api/auth/register"
+                    "/api/auth/register",
+                    "/api/auth/login"
                 ).permitAll()
                 .anyRequest().authenticated()
             )

@@ -1,6 +1,8 @@
 
 package com.fincore.api.service;
 
+import com.fincore.api.dto.LoginRequest;
+import com.fincore.api.dto.LoginResponse;
 import com.fincore.api.dto.RegisterRequest;
 import com.fincore.api.entity.UserAccount;
 import com.fincore.api.repository.UserAccountRepository;
@@ -48,5 +50,38 @@ public class AuthService {
         user.setStatus("ACTIVE");
 
         return userAccountRepository.saveAndFlush(user).getId();
+    }
+
+    public LoginResponse login(LoginRequest request) {
+
+        String email = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        UserAccount user = userAccountRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "Invalid email or password"));
+
+        if (!passwordEncoder.matches(
+                request.password(), user.getPasswordHash())) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Invalid email or password");
+        }
+
+        if (!"ACTIVE".equals(user.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Account is not active");
+        }
+
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getRole(),
+                "Credentials verified successfully"
+        );
     }
 }

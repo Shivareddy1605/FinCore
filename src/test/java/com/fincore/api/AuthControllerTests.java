@@ -114,4 +114,123 @@ class AuthControllerTests {
         assertTrue(passwordEncoder.matches(rawPassword, storedHash));
         assertFalse(passwordEncoder.matches("WrongPassword123!", storedHash));
     }
+    @Test
+void loginSucceedsWithCorrectCredentials() throws Exception {
+
+    String email = "login-test-" + UUID.randomUUID() + "@example.com";
+    String password = "FinCore@Test2026!";
+
+    String requestBody = """
+            {
+                "email": "%s",
+                "password": "%s"
+            }
+            """.formatted(email, password);
+
+    mockMvc.perform(post("/api/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(requestBody))
+            .andExpect(status().isCreated());
+
+    mockMvc.perform(post("/api/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(requestBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").exists())
+            .andExpect(jsonPath("$.email").value(email))
+            .andExpect(jsonPath("$.role").value("BORROWER"))
+            .andExpect(jsonPath("$.message")
+                    .value("Credentials verified successfully"));
+}
+@Test
+void loginRejectsIncorrectPassword() throws Exception {
+
+    String email = "login-test-" + UUID.randomUUID() + "@example.com";
+    String correctPassword = "FinCore@Test2026!";
+
+    String registrationBody = """
+            {
+                "email": "%s",
+                "password": "%s"
+            }
+            """.formatted(email, correctPassword);
+
+    mockMvc.perform(post("/api/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(registrationBody))
+            .andExpect(status().isCreated());
+
+    String loginBody = """
+            {
+                "email": "%s",
+                "password": "WrongPassword123!"
+            }
+            """.formatted(email);
+
+    mockMvc.perform(post("/api/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(loginBody))
+            .andExpect(status().isUnauthorized());
+}
+@Test
+void loginRejectsUnknownEmail() throws Exception {
+
+    String email = "unknown-" + UUID.randomUUID() + "@example.com";
+
+    String loginBody = """
+            {
+                "email": "%s",
+                "password": "SomePassword123!"
+            }
+            """.formatted(email);
+
+    mockMvc.perform(post("/api/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(loginBody))
+            .andExpect(status().isUnauthorized());
+}
+@Test
+void loginRejectsMissingCredentials() throws Exception {
+
+    String loginBody = """
+            {}
+            """;
+
+    mockMvc.perform(post("/api/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(loginBody))
+            .andExpect(status().isBadRequest());
+}
+@Test
+void loginRejectsDisabledAccount() throws Exception {
+
+    String email = "disabled-" + UUID.randomUUID() + "@example.com";
+    String password = "FinCore@Test2026!";
+
+    String requestBody = """
+            {
+                "email": "%s",
+                "password": "%s"
+            }
+            """.formatted(email, password);
+
+    // Register account
+    mockMvc.perform(post("/api/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(requestBody))
+            .andExpect(status().isCreated());
+
+    // Mark account as disabled
+    UserAccount account = userAccountRepository.findByEmail(email)
+            .orElseThrow();
+
+    account.setStatus("DISABLED");
+    userAccountRepository.saveAndFlush(account);
+
+    // Correct password must still be rejected
+    mockMvc.perform(post("/api/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(requestBody))
+            .andExpect(status().isForbidden());
+}
 }
