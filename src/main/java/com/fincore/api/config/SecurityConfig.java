@@ -1,6 +1,6 @@
-
 package com.fincore.api.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -26,6 +26,7 @@ public class SecurityConfig {
                 .ignoringRequestMatchers("/api/auth/register")
             )
             .authorizeHttpRequests(auth -> auth
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers(
                     HttpMethod.POST,
