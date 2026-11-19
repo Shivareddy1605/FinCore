@@ -1,4 +1,3 @@
-
 package com.fincore.api.service;
 
 import com.fincore.api.dto.LoginRequest;
@@ -20,13 +19,16 @@ public class AuthService {
 
     private final UserAccountRepository userAccountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
     public AuthService(
             UserAccountRepository userAccountRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService) {
 
         this.userAccountRepository = userAccountRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
     }
 
     public UUID register(RegisterRequest request) {
@@ -77,11 +79,14 @@ public class AuthService {
                     "Account is not active");
         }
 
+        String accessToken = jwtService.generateToken(user);
+
         return new LoginResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getRole(),
-                "Credentials verified successfully"
+                "Login successful",
+                accessToken
         );
     }
 }
