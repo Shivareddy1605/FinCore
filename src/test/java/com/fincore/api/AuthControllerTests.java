@@ -1,20 +1,27 @@
+
 package com.fincore.api;
+
+import com.fincore.api.entity.UserAccount;
+import com.fincore.api.repository.UserAccountRepository;
+
+import com.jayway.jsonpath.JsonPath;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
-import com.fincore.api.entity.UserAccount;
-import com.fincore.api.repository.UserAccountRepository;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,6 +33,15 @@ class AuthControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
+
+    @Autowired
+    private UserAccountRepository userAccountRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Test
     void registrationWorksWithoutAuthentication() throws Exception {
@@ -80,12 +96,6 @@ class AuthControllerTests {
                 .andExpect(status().isConflict());
     }
 
-    @Autowired
-    private UserAccountRepository userAccountRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
     @Test
     void registrationStoresPasswordAsBCryptHash() throws Exception {
 
@@ -133,7 +143,10 @@ class AuthControllerTests {
                 .content(requestBody))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/api/auth/login")
+        UserAccount account = userAccountRepository.findByEmail(email)
+                .orElseThrow();
+
+        String responseBody = mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isOk())
@@ -143,7 +156,41 @@ class AuthControllerTests {
                 .andExpect(jsonPath("$.message")
                         .value("Login successful"))
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        // Extract access token from the JSON response.
+        String token = JsonPath.read(responseBody, "$.accessToken");
+
+        // Decode and verify JWT signature and timestamps.
+        Jwt jwt = jwtDecoder.decode(token);
+
+        // Verify issuer.
+        assertEquals("fincore-api", jwt.getClaimAsString("iss"));
+
+        // Verify subject matches the registered user's UUID.
+        assertEquals(account.getId().toString(), jwt.getSubject());
+
+        // Verify role.
+        assertEquals("BORROWER", jwt.getClaimAsString("role"));
+
+        // Verify issued-at and expiration timestamps.
+        Instant issuedAt = jwt.getIssuedAt();
+        Instant expiresAt = jwt.getExpiresAt();
+
+        assertNotNull(issuedAt);
+        assertNotNull(expiresAt);
+
+        // Token must expire exactly 30 minutes after issuance.
+        assertEquals(
+                Duration.ofMinutes(30),
+                Duration.between(issuedAt, expiresAt)
+        );
+
+        // Token must not already be expired.
+        assertTrue(expiresAt.isAfter(Instant.now()));
     }
 
     @Test
@@ -221,20 +268,20 @@ class AuthControllerTests {
                 }
                 """.formatted(email, password);
 
-        // Register account
+        // Register account.
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isCreated());
 
-        // Mark account as disabled
+        // Mark account as disabled.
         UserAccount account = userAccountRepository.findByEmail(email)
                 .orElseThrow();
 
         account.setStatus("DISABLED");
         userAccountRepository.saveAndFlush(account);
 
-        // Correct password must still be rejected
+        // Correct password must still be rejected.
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
