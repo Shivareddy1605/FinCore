@@ -12,12 +12,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -40,7 +45,6 @@ class CustomerAuthorizationTests {
     @Test
     void borrowerCannotAccessUnlinkedCustomer() throws Exception {
 
-        // Create a customer record.
         Customer customer = new Customer(UUID.randomUUID());
 
         customer.setFullName("Test Customer");
@@ -50,8 +54,6 @@ class CustomerAuthorizationTests {
 
         customerRepository.saveAndFlush(customer);
 
-        // Create a borrower account that is NOT linked
-        // to the customer record.
         UserAccount borrower = new UserAccount(UUID.randomUUID());
 
         borrower.setEmail(
@@ -62,16 +64,10 @@ class CustomerAuthorizationTests {
 
         userAccountRepository.saveAndFlush(borrower);
 
-        // Confirm that the borrower has no linked customer.
-        org.junit.jupiter.api.Assertions.assertNull(
-                borrower.getCustomerId()
-        );
+        assertNull(borrower.getCustomerId());
 
-        // Generate a valid JWT for this borrower.
         String token = jwtService.generateToken(borrower);
 
-        // The borrower must NOT access an unlinked
-        // customer record.
         mockMvc.perform(
                 get("/api/customers/{id}", customer.getId())
                         .header(
@@ -80,5 +76,157 @@ class CustomerAuthorizationTests {
                         )
         )
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void creatingCustomerProfileLinksAuthenticatedBorrower()
+            throws Exception {
+
+        String email =
+                "profile-" + UUID.randomUUID() + "@example.com";
+
+        // Create an active borrower without a customer profile.
+        UserAccount borrower = new UserAccount(UUID.randomUUID());
+
+        borrower.setEmail(email);
+        borrower.setPasswordHash("test-only-unused-password-hash");
+        borrower.setRole("BORROWER");
+        borrower.setStatus("ACTIVE");
+
+        userAccountRepository.saveAndFlush(borrower);
+
+        assertNull(borrower.getCustomerId());
+
+        // Generate a real JWT for this borrower.
+        String token = jwtService.generateToken(borrower);
+
+        String requestBody = """
+                {
+                    "fullName": "Test Borrower",
+                    "email": "%s",
+                    "phoneNumber": "9876543210"
+                }
+                """.formatted(email);
+
+        // Create a customer profile using the borrower's JWT.
+        String response = mockMvc.perform(
+                post("/api/customers")
+                        .with(csrf())
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+        )
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.email").value(email))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        // Extract the newly created customer ID.
+        String customerId = new tools.jackson.databind.ObjectMapper()
+                .readTree(response)
+                .get("id")
+                .asText();
+
+        // Verify the customer record exists.
+        assertTrue(
+                customerRepository.existsById(
+                        UUID.fromString(customerId))
+        );
+
+        // Verify ownership is stored in the user account.
+        UserAccount updatedBorrower =
+                userAccountRepository.findById(borrower.getId())
+                        .orElseThrow();
+
+        assertNotNull(updatedBorrower.getCustomerId());
+
+        assertEquals(
+                UUID.fromString(customerId),
+                updatedBorrower.getCustomerId()
+        );
+    }
+
+    @Test
+    void borrowerCannotCreateSecondCustomerProfile()
+            throws Exception {
+
+        String email =
+                "duplicate-profile-" + UUID.randomUUID()
+                        + "@example.com";
+
+        // Create an active borrower without a customer profile.
+        UserAccount borrower = new UserAccount(UUID.randomUUID());
+
+        borrower.setEmail(email);
+        borrower.setPasswordHash("test-only-unused-password-hash");
+        borrower.setRole("BORROWER");
+        borrower.setStatus("ACTIVE");
+
+        userAccountRepository.saveAndFlush(borrower);
+
+        String token = jwtService.generateToken(borrower);
+
+        String requestBody = """
+                {
+                    "fullName": "Test Borrower",
+                    "email": "%s",
+                    "phoneNumber": "9876543210"
+                }
+                """.formatted(email);
+
+        // First registration must succeed.
+        String response = mockMvc.perform(
+                post("/api/customers")
+                        .with(csrf())
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+        )
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID originalCustomerId = UUID.fromString(
+                new tools.jackson.databind.ObjectMapper()
+                        .readTree(response)
+                        .get("id")
+                        .asText()
+        );
+
+        assertTrue(customerRepository.existsById(originalCustomerId));
+
+        // The same borrower must not create another profile.
+        mockMvc.perform(
+                post("/api/customers")
+                        .with(csrf())
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+        )
+                .andExpect(status().isConflict());
+
+        // The original ownership relationship must remain intact.
+        UserAccount updatedBorrower =
+                userAccountRepository.findById(borrower.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                originalCustomerId,
+                updatedBorrower.getCustomerId()
+        );
+
+        assertTrue(customerRepository.existsById(originalCustomerId));
     }
 }

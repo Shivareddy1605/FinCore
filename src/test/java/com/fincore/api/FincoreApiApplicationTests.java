@@ -1,17 +1,21 @@
 
 package com.fincore.api;
 
+import com.fincore.api.entity.Customer;
+import com.fincore.api.entity.UserAccount;
+import com.fincore.api.repository.CustomerRepository;
+import com.fincore.api.repository.UserAccountRepository;
+import com.fincore.api.service.JwtService;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.test.context.support.WithMockUser;
-import com.fincore.api.repository.UserAccountRepository;
-import com.fincore.api.service.JwtService;
-import org.springframework.http.HttpHeaders;
 
 import java.util.UUID;
 
@@ -35,6 +39,9 @@ class FincoreApiApplicationTests {
     private UserAccountRepository userAccountRepository;
 
     @Autowired
+    private CustomerRepository customerRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     private BorrowerTestFixture borrowerFixture() {
@@ -43,12 +50,38 @@ class FincoreApiApplicationTests {
                 jwtService);
     }
 
+    // Create an unlinked test borrower whose account email
+    // matches the email used for customer registration.
+    private String createBorrowerToken(String email) {
+
+        UserAccount borrower = new UserAccount(UUID.randomUUID());
+
+        borrower.setEmail(email);
+        borrower.setPasswordHash("test-only-unused-password-hash");
+        borrower.setRole("BORROWER");
+        borrower.setStatus("ACTIVE");
+
+        userAccountRepository.saveAndFlush(borrower);
+
+        return jwtService.generateToken(borrower);
+    }
+
+    private String customerIdFromResponse(String response)
+            throws Exception {
+
+        return new tools.jackson.databind.ObjectMapper()
+                .readTree(response)
+                .get("id")
+                .asText();
+    }
+
     @Test
     void contextLoads() {
     }
 
     @Test
     void healthEndpointReturnsUp() throws Exception {
+
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
@@ -59,6 +92,7 @@ class FincoreApiApplicationTests {
     void customerRegistrationReturnsIdAndTimestamp() throws Exception {
 
         String email = "rahul-" + UUID.randomUUID() + "@example.com";
+        String token = createBorrowerToken(email);
 
         String requestBody = """
                 {
@@ -70,6 +104,7 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isCreated())
@@ -138,6 +173,7 @@ class FincoreApiApplicationTests {
     void customerRetrievalReturnsExistingCustomer() throws Exception {
 
         String email = "rahul-" + UUID.randomUUID() + "@example.com";
+        String token = createBorrowerToken(email);
 
         String requestBody = """
                 {
@@ -149,6 +185,7 @@ class FincoreApiApplicationTests {
 
         String response = mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isCreated())
@@ -156,13 +193,7 @@ class FincoreApiApplicationTests {
                 .getResponse()
                 .getContentAsString();
 
-        String customerId = new tools.jackson.databind.ObjectMapper()
-                .readTree(response)
-                .get("id")
-                .asText();
-
-        String token = borrowerFixture()
-                .createBorrowerToken(UUID.fromString(customerId));
+        String customerId = customerIdFromResponse(response);
 
         mockMvc.perform(get("/api/customers/" + customerId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
@@ -178,8 +209,8 @@ class FincoreApiApplicationTests {
 
         UUID unknownId = UUID.randomUUID();
 
-        // A nonexistent customer cannot be linked because of the foreign key.
-        String token = borrowerFixture().createUnlinkedBorrowerToken();
+        String token = borrowerFixture()
+                .createUnlinkedBorrowerToken();
 
         mockMvc.perform(get("/api/customers/{id}", unknownId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
@@ -190,7 +221,10 @@ class FincoreApiApplicationTests {
     void customerUpdateChangesProfileDetails() throws Exception {
 
         String email = "rahul-" + UUID.randomUUID() + "@example.com";
-        String updatedEmail = "rahulkumar-" + UUID.randomUUID() + "@example.com";
+        String updatedEmail = "rahulkumar-" + UUID.randomUUID()
+                + "@example.com";
+
+        String token = createBorrowerToken(email);
 
         String createBody = """
                 {
@@ -202,6 +236,7 @@ class FincoreApiApplicationTests {
 
         String response = mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createBody))
                 .andExpect(status().isCreated())
@@ -209,13 +244,7 @@ class FincoreApiApplicationTests {
                 .getResponse()
                 .getContentAsString();
 
-        String customerId = new tools.jackson.databind.ObjectMapper()
-                .readTree(response)
-                .get("id")
-                .asText();
-
-        String token = borrowerFixture()
-                .createBorrowerToken(UUID.fromString(customerId));
+        String customerId = customerIdFromResponse(response);
 
         String updateBody = """
                 {
@@ -248,7 +277,10 @@ class FincoreApiApplicationTests {
     void customerUpdatePreservesIdAndCreatedAt() throws Exception {
 
         String email = "rahul-" + UUID.randomUUID() + "@example.com";
-        String updatedEmail = "rahulkumar-" + UUID.randomUUID() + "@example.com";
+        String updatedEmail = "rahulkumar-" + UUID.randomUUID()
+                + "@example.com";
+
+        String token = createBorrowerToken(email);
 
         String createBody = """
                 {
@@ -260,6 +292,7 @@ class FincoreApiApplicationTests {
 
         String response = mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createBody))
                 .andExpect(status().isCreated())
@@ -272,9 +305,6 @@ class FincoreApiApplicationTests {
 
         String customerId = originalCustomer.get("id").asText();
         String createdAt = originalCustomer.get("createdAt").asText();
-
-        String token = borrowerFixture()
-                .createBorrowerToken(UUID.fromString(customerId));
 
         String updateBody = """
                 {
@@ -324,7 +354,9 @@ class FincoreApiApplicationTests {
     void customerUpdateRejectsUnownedUnknownId() throws Exception {
 
         UUID unknownId = UUID.randomUUID();
-        String token = borrowerFixture().createUnlinkedBorrowerToken();
+
+        String token = borrowerFixture()
+                .createUnlinkedBorrowerToken();
 
         String updateBody = """
                 {
@@ -345,17 +377,22 @@ class FincoreApiApplicationTests {
     @Test
     void customerRegistrationRejectsDuplicateEmail() throws Exception {
 
-        String email = "duplicate-" + UUID.randomUUID() + "@example.com";
+        String email = "duplicate-" + UUID.randomUUID()
+                + "@example.com";
 
-        String firstCustomer = """
-                {
-                    "fullName": "Rahul Sharma",
-                    "email": "%s",
-                    "phoneNumber": "9876543210"
-                }
-                """.formatted(email);
+        // Seed an existing customer to test duplicate-email handling.
+        Customer existing = new Customer(UUID.randomUUID());
 
-        String secondCustomer = """
+        existing.setFullName("Rahul Sharma");
+        existing.setEmail(email);
+        existing.setPhoneNumber("9876543210");
+
+        customerRepository.saveAndFlush(existing);
+
+        // A separate borrower has the same account email.
+        String token = createBorrowerToken(email);
+
+        String requestBody = """
                 {
                     "fullName": "Amit Kumar",
                     "email": "%s",
@@ -365,22 +402,22 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(firstCustomer))
-                .andExpect(status().isCreated());
-
-        mockMvc.perform(post("/api/customers")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(secondCustomer))
+                .content(requestBody))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void customerUpdateRejectsDuplicateEmail() throws Exception {
 
-        String firstEmail = "first-" + UUID.randomUUID() + "@example.com";
-        String secondEmail = "second-" + UUID.randomUUID() + "@example.com";
+        String firstEmail = "first-" + UUID.randomUUID()
+                + "@example.com";
+        String secondEmail = "second-" + UUID.randomUUID()
+                + "@example.com";
+
+        String firstToken = createBorrowerToken(firstEmail);
+        String secondToken = createBorrowerToken(secondEmail);
 
         String firstCustomer = """
                 {
@@ -400,12 +437,14 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + firstToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(firstCustomer))
                 .andExpect(status().isCreated());
 
         String response = mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(secondCustomer))
                 .andExpect(status().isCreated())
@@ -413,13 +452,7 @@ class FincoreApiApplicationTests {
                 .getResponse()
                 .getContentAsString();
 
-        String secondCustomerId = new tools.jackson.databind.ObjectMapper()
-                .readTree(response)
-                .get("id")
-                .asText();
-
-        String token = borrowerFixture()
-                .createBorrowerToken(UUID.fromString(secondCustomerId));
+        String secondCustomerId = customerIdFromResponse(response);
 
         String updateBody = """
                 {
@@ -431,13 +464,13 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(put("/api/customers/" + secondCustomerId)
                 .with(csrf())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isConflict());
 
         mockMvc.perform(get("/api/customers/" + secondCustomerId)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(secondEmail));
     }
@@ -445,7 +478,10 @@ class FincoreApiApplicationTests {
     @Test
     void customerUpdateAllowsExistingEmail() throws Exception {
 
-        String email = "existing-" + UUID.randomUUID() + "@example.com";
+        String email = "existing-" + UUID.randomUUID()
+                + "@example.com";
+
+        String token = createBorrowerToken(email);
 
         String createBody = """
                 {
@@ -457,6 +493,7 @@ class FincoreApiApplicationTests {
 
         String response = mockMvc.perform(post("/api/customers")
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createBody))
                 .andExpect(status().isCreated())
@@ -464,13 +501,7 @@ class FincoreApiApplicationTests {
                 .getResponse()
                 .getContentAsString();
 
-        String customerId = new tools.jackson.databind.ObjectMapper()
-                .readTree(response)
-                .get("id")
-                .asText();
-
-        String token = borrowerFixture()
-                .createBorrowerToken(UUID.fromString(customerId));
+        String customerId = customerIdFromResponse(response);
 
         String updateBody = """
                 {
