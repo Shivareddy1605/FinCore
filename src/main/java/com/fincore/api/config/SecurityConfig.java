@@ -39,7 +39,7 @@ public class SecurityConfig {
                 ).permitAll()
                 .anyRequest().authenticated()
             )
-            .httpBasic(basic -> {})
+            .httpBasic(basic -> basic.disable())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> {})
             );

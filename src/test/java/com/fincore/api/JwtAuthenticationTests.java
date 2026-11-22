@@ -207,4 +207,24 @@ class JwtAuthenticationTests {
                 verifyNoInteractions(customerService);
         }
 
+        @Test
+        void httpBasicAuthenticationIsNotAdvertised() throws Exception {
+
+                mockMvc.perform(get(
+                                "/api/customers/{id}",
+                                UUID.randomUUID()))
+                                .andExpect(status().isUnauthorized())
+                                .andExpect(result -> {
+                                        boolean basicAdvertised = result.getResponse()
+                                                        .getHeaders(HttpHeaders.WWW_AUTHENTICATE)
+                                                        .stream()
+                                                        .anyMatch(header -> header.startsWith("Basic"));
+
+                                        org.junit.jupiter.api.Assertions.assertFalse(
+                                                        basicAdvertised,
+                                                        "Protected API must not advertise HTTP Basic authentication");
+                                });
+
+                verifyNoInteractions(customerService);
+        }
 }
