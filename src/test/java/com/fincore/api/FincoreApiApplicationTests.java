@@ -221,8 +221,6 @@ class FincoreApiApplicationTests {
     void customerUpdateChangesProfileDetails() throws Exception {
 
         String email = "rahul-" + UUID.randomUUID() + "@example.com";
-        String updatedEmail = "rahulkumar-" + UUID.randomUUID()
-                + "@example.com";
 
         String token = createBorrowerToken(email);
 
@@ -252,7 +250,7 @@ class FincoreApiApplicationTests {
                     "email": "%s",
                     "phoneNumber": "9123456789"
                 }
-                """.formatted(updatedEmail);
+                """.formatted(email);
 
         mockMvc.perform(put("/api/customers/" + customerId)
                 .with(csrf())
@@ -262,14 +260,14 @@ class FincoreApiApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customerId))
                 .andExpect(jsonPath("$.fullName").value("Rahul Kumar"))
-                .andExpect(jsonPath("$.email").value(updatedEmail))
+                .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.phoneNumber").value("9123456789"));
 
         mockMvc.perform(get("/api/customers/" + customerId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fullName").value("Rahul Kumar"))
-                .andExpect(jsonPath("$.email").value(updatedEmail))
+                .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.phoneNumber").value("9123456789"));
     }
 
@@ -277,9 +275,6 @@ class FincoreApiApplicationTests {
     void customerUpdatePreservesIdAndCreatedAt() throws Exception {
 
         String email = "rahul-" + UUID.randomUUID() + "@example.com";
-        String updatedEmail = "rahulkumar-" + UUID.randomUUID()
-                + "@example.com";
-
         String token = createBorrowerToken(email);
 
         String createBody = """
@@ -312,7 +307,7 @@ class FincoreApiApplicationTests {
                     "email": "%s",
                     "phoneNumber": "9123456789"
                 }
-                """.formatted(updatedEmail);
+                """.formatted(email);
 
         mockMvc.perform(put("/api/customers/" + customerId)
                 .with(csrf())
@@ -522,4 +517,70 @@ class FincoreApiApplicationTests {
                 .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.phoneNumber").value("9123456789"));
     }
+
+    @Test
+    void customerUpdateRejectsEmailChangeAndPreservesProfile()
+            throws Exception {
+
+        String email = "original-" + UUID.randomUUID() + "@example.com";
+
+        String newEmail = "changed-" + UUID.randomUUID() + "@example.com";
+
+        String token = createBorrowerToken(email);
+
+        String createBody = """
+                {
+                    "fullName": "Rahul Sharma",
+                    "email": "%s",
+                    "phoneNumber": "9876543210"
+                }
+                """.formatted(email);
+
+        String response = mockMvc.perform(
+                post("/api/customers")
+                        .with(csrf())
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String customerId = customerIdFromResponse(response);
+
+        String updateBody = """
+                {
+                    "fullName": "Rahul Kumar",
+                    "email": "%s",
+                    "phoneNumber": "9123456789"
+                }
+                """.formatted(newEmail);
+
+        // Email changes must be rejected.
+        mockMvc.perform(
+                put("/api/customers/" + customerId)
+                        .with(csrf())
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isConflict());
+
+        // The failed update must not modify any profile fields.
+        mockMvc.perform(
+                get("/api/customers/" + customerId)
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(customerId))
+                .andExpect(jsonPath("$.fullName").value("Rahul Sharma"))
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.phoneNumber").value("9876543210"));
+    }
+
 }

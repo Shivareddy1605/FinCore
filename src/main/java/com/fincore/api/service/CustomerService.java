@@ -120,12 +120,13 @@ public class CustomerService {
         customer.setEmail(email);
         customer.setPhoneNumber(phoneNumber);
 
-       customer = customerRepository.saveAndFlush(customer);
+        // Retain the managed entity returned by JPA.
+        customer = customerRepository.saveAndFlush(customer);
 
-        // Load the database-generated createdAt timestamp.
+        // Load the database-generated creation timestamp.
         entityManager.refresh(customer);
 
-        // Link the new customer to the authenticated account.
+        // Link the customer within the same transaction.
         user.setCustomerId(customer.getId());
         userAccountRepository.saveAndFlush(user);
 
@@ -159,18 +160,18 @@ public class CustomerService {
             String email,
             String phoneNumber) {
 
+        // Verifies that the authenticated borrower owns the profile.
         Customer customer = getCustomerById(id);
 
-        if (!customer.getEmail().equals(email)
-                && customerRepository.existsByEmail(email)) {
-
+        // Email changes require a separate verification workflow.
+        if (!customer.getEmail().equals(email)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Email already registered");
+                    "Email cannot be changed through profile updates");
         }
 
+        // Only editable profile fields are modified.
         customer.setFullName(fullName);
-        customer.setEmail(email);
         customer.setPhoneNumber(phoneNumber);
 
         return customerRepository.saveAndFlush(customer);
