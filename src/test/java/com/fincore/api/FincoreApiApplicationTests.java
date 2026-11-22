@@ -9,6 +9,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.fincore.api.repository.UserAccountRepository;
+import com.fincore.api.service.JwtService;
+import org.springframework.http.HttpHeaders;
 
 import java.util.UUID;
 
@@ -27,6 +30,18 @@ class FincoreApiApplicationTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserAccountRepository userAccountRepository;
+
+    @Autowired
+    private JwtService jwtService;
+
+    private BorrowerTestFixture borrowerFixture() {
+        return new BorrowerTestFixture(
+                userAccountRepository,
+                jwtService);
+    }
 
     @Test
     void contextLoads() {
@@ -146,7 +161,11 @@ class FincoreApiApplicationTests {
                 .get("id")
                 .asText();
 
-        mockMvc.perform(get("/api/customers/" + customerId))
+        String token = borrowerFixture()
+                .createBorrowerToken(UUID.fromString(customerId));
+
+        mockMvc.perform(get("/api/customers/" + customerId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customerId))
                 .andExpect(jsonPath("$.fullName").value("Rahul Sharma"))
@@ -155,12 +174,16 @@ class FincoreApiApplicationTests {
     }
 
     @Test
-    void customerRetrievalReturns404ForUnknownId() throws Exception {
+    void customerRetrievalRejectsUnownedUnknownId() throws Exception {
 
-        String unknownId = "550e8400-e29b-41d4-a716-446655440000";
+        UUID unknownId = UUID.randomUUID();
 
-        mockMvc.perform(get("/api/customers/" + unknownId))
-                .andExpect(status().isNotFound());
+        // A nonexistent customer cannot be linked because of the foreign key.
+        String token = borrowerFixture().createUnlinkedBorrowerToken();
+
+        mockMvc.perform(get("/api/customers/{id}", unknownId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -191,6 +214,9 @@ class FincoreApiApplicationTests {
                 .get("id")
                 .asText();
 
+        String token = borrowerFixture()
+                .createBorrowerToken(UUID.fromString(customerId));
+
         String updateBody = """
                 {
                     "fullName": "Rahul Kumar",
@@ -201,6 +227,7 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(put("/api/customers/" + customerId)
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isOk())
@@ -209,7 +236,8 @@ class FincoreApiApplicationTests {
                 .andExpect(jsonPath("$.email").value(updatedEmail))
                 .andExpect(jsonPath("$.phoneNumber").value("9123456789"));
 
-        mockMvc.perform(get("/api/customers/" + customerId))
+        mockMvc.perform(get("/api/customers/" + customerId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fullName").value("Rahul Kumar"))
                 .andExpect(jsonPath("$.email").value(updatedEmail))
@@ -245,6 +273,9 @@ class FincoreApiApplicationTests {
         String customerId = originalCustomer.get("id").asText();
         String createdAt = originalCustomer.get("createdAt").asText();
 
+        String token = borrowerFixture()
+                .createBorrowerToken(UUID.fromString(customerId));
+
         String updateBody = """
                 {
                     "fullName": "Rahul Kumar",
@@ -255,13 +286,15 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(put("/api/customers/" + customerId)
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customerId))
                 .andExpect(jsonPath("$.createdAt").value(createdAt));
 
-        mockMvc.perform(get("/api/customers/" + customerId))
+        mockMvc.perform(get("/api/customers/" + customerId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customerId))
                 .andExpect(jsonPath("$.createdAt").value(createdAt));
@@ -288,9 +321,10 @@ class FincoreApiApplicationTests {
     }
 
     @Test
-    void customerUpdateReturns404ForUnknownId() throws Exception {
+    void customerUpdateRejectsUnownedUnknownId() throws Exception {
 
-        String unknownId = "550e8400-e29b-41d4-a716-446655440000";
+        UUID unknownId = UUID.randomUUID();
+        String token = borrowerFixture().createUnlinkedBorrowerToken();
 
         String updateBody = """
                 {
@@ -302,9 +336,10 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(put("/api/customers/" + unknownId)
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -383,6 +418,9 @@ class FincoreApiApplicationTests {
                 .get("id")
                 .asText();
 
+        String token = borrowerFixture()
+                .createBorrowerToken(UUID.fromString(secondCustomerId));
+
         String updateBody = """
                 {
                     "fullName": "Amit Kumar",
@@ -393,11 +431,13 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(put("/api/customers/" + secondCustomerId)
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isConflict());
 
-        mockMvc.perform(get("/api/customers/" + secondCustomerId))
+        mockMvc.perform(get("/api/customers/" + secondCustomerId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(secondEmail));
     }
@@ -429,6 +469,9 @@ class FincoreApiApplicationTests {
                 .get("id")
                 .asText();
 
+        String token = borrowerFixture()
+                .createBorrowerToken(UUID.fromString(customerId));
+
         String updateBody = """
                 {
                     "fullName": "Rahul Kumar",
@@ -439,6 +482,7 @@ class FincoreApiApplicationTests {
 
         mockMvc.perform(put("/api/customers/" + customerId)
                 .with(csrf())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody))
                 .andExpect(status().isOk())
