@@ -25,6 +25,12 @@ public class JwtService {
             @Value("${fincore.jwt.issuer}") String issuer,
             @Value("${fincore.jwt.expiration-minutes}") long expirationMinutes) {
 
+        if (expirationMinutes < 1 || expirationMinutes > 60) {
+            throw new IllegalArgumentException(
+                    "JWT expiration must be between 1 and 60 minutes"
+            );
+        }
+
         this.jwtEncoder = jwtEncoder;
         this.issuer = issuer;
         this.expirationMinutes = expirationMinutes;
