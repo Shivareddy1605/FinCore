@@ -17,76 +17,92 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-    private final UserAccountRepository userAccountRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
+        private final UserAccountRepository userAccountRepository;
+        private final PasswordEncoder passwordEncoder;
+        private final JwtService jwtService;
+        private final LoginRateLimiter loginRateLimiter;
 
-    public AuthService(
-            UserAccountRepository userAccountRepository,
-            PasswordEncoder passwordEncoder,
-            JwtService jwtService) {
+        public AuthService(
+                        UserAccountRepository userAccountRepository,
+                        PasswordEncoder passwordEncoder,
+                        JwtService jwtService,
+                        LoginRateLimiter loginRateLimiter) {
 
-        this.userAccountRepository = userAccountRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-    }
-
-    public UUID register(RegisterRequest request) {
-
-        String email = request.email()
-                .trim()
-                .toLowerCase(Locale.ROOT);
-
-        if (userAccountRepository.existsByEmail(email)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Email already registered");
+                this.userAccountRepository = userAccountRepository;
+                this.passwordEncoder = passwordEncoder;
+                this.jwtService = jwtService;
+                this.loginRateLimiter = loginRateLimiter;
         }
 
-        UserAccount user = new UserAccount(UUID.randomUUID());
+        public UUID register(RegisterRequest request) {
 
-        user.setEmail(email);
-        user.setPasswordHash(
-                passwordEncoder.encode(request.password()));
-        user.setRole("BORROWER");
-        user.setStatus("ACTIVE");
+                String email = request.email()
+                                .trim()
+                                .toLowerCase(Locale.ROOT);
 
-        return userAccountRepository.saveAndFlush(user).getId();
-    }
+                if (userAccountRepository.existsByEmail(email)) {
+                        throw new ResponseStatusException(
+                                        HttpStatus.CONFLICT,
+                                        "Email already registered");
+                }
 
-    public LoginResponse login(LoginRequest request) {
+                UserAccount user = new UserAccount(UUID.randomUUID());
 
-        String email = request.email()
-                .trim()
-                .toLowerCase(Locale.ROOT);
+                user.setEmail(email);
+                user.setPasswordHash(
+                                passwordEncoder.encode(request.password()));
+                user.setRole("BORROWER");
+                user.setStatus("ACTIVE");
 
-        UserAccount user = userAccountRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED,
-                        "Invalid email or password"));
-
-        if (!passwordEncoder.matches(
-                request.password(), user.getPasswordHash())) {
-
-            throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED,
-                    "Invalid email or password");
+                return userAccountRepository.saveAndFlush(user).getId();
         }
 
-        if (!"ACTIVE".equals(user.getStatus())) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "Account is not active");
+        public LoginResponse login(LoginRequest request) {
+
+                String email = request.email()
+                                .trim()
+                                .toLowerCase(Locale.ROOT);
+
+                return loginRateLimiter.withEmailLock(email, () -> {
+
+                        if (loginRateLimiter.isBlocked(email)) {
+                                throw new ResponseStatusException(
+                                                HttpStatus.TOO_MANY_REQUESTS,
+                                                "Too many failed login attempts. Try again later");
+                        }
+
+                        UserAccount user = userAccountRepository.findByEmail(email)
+                                        .orElse(null);
+
+                        if (user == null ||
+                                        !passwordEncoder.matches(
+                                                        request.password(),
+                                                        user.getPasswordHash())) {
+
+                                loginRateLimiter.recordFailure(email);
+
+                                throw new ResponseStatusException(
+                                                HttpStatus.UNAUTHORIZED,
+                                                "Invalid email or password");
+                        }
+
+                        if (!"ACTIVE".equals(user.getStatus())) {
+                                throw new ResponseStatusException(
+                                                HttpStatus.FORBIDDEN,
+                                                "Account is not active");
+                        }
+
+                        loginRateLimiter.clearFailures(email);
+
+                        String accessToken = jwtService.generateToken(user);
+
+                        return new LoginResponse(
+                                        user.getId(),
+                                        user.getEmail(),
+                                        user.getRole(),
+                                        "Login successful",
+                                        accessToken);
+                });
         }
 
-        String accessToken = jwtService.generateToken(user);
-
-        return new LoginResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                "Login successful",
-                accessToken
-        );
-    }
 }
